@@ -60,6 +60,7 @@ internal class Program
                     "&categories=111" +
                     $"&atleast={encodedRes}" +
                     "&ratios=16x9" +
+                    "&topRange=3d" +
                     "&page=1";
 
                 var metaJson = await http.GetStringAsync(metaUrl);
@@ -81,6 +82,7 @@ internal class Program
                     "&categories=111" +
                     $"&atleast={encodedRes}" +
                     "&ratios=16x9" +
+                    "&topRange=3d" +
                     $"&page={pageToUse}";
 
                 var json = await http.GetStringAsync(apiUrl);
