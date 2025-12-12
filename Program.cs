@@ -25,11 +25,35 @@ internal class Program
         {
             Console.Write("Enter wallpaper search subject: ");
             var query = Console.ReadLine()?.Trim();
-
+            
             if (string.IsNullOrWhiteSpace(query))
-                query = "wallpaper";
+                query = "random";
 
             var encodedQuery = Uri.EscapeDataString(query);
+
+            Console.Write("Would you like 1920 X 1080 for the reolution? (Y or N):");
+            var resolutionInput = Console.ReadLine()?.Trim().ToLower();
+            var searchRes = "1920X1080";
+            if (resolutionInput == "y" || resolutionInput == "yes")
+            {
+                searchRes = "1920x1080";
+
+            }
+            else
+            {
+                Console.Write("Enter your desired resolution (e.g., 2560x1440): ");
+                var customRes = Console.ReadLine()?.Trim().ToLower();
+                if (!string.IsNullOrWhiteSpace(customRes))
+                {
+                    searchRes = customRes;
+                }
+                else
+                {
+                    searchRes = "1920x1080";
+                }
+            }
+
+            var encodedRes = Uri.EscapeDataString(searchRes);
 
             var apiUrl =
                 "https://wallhaven.cc/api/v1/search" +
@@ -37,7 +61,7 @@ internal class Program
                 "&sorting=random" +
                 "&purity=100" +
                 "&categories=111" +
-                "&atleast=1920x1080" +
+                $"&atleast={encodedRes}" +
                 "&ratios=16x9" +
                 "&page=1";
 
