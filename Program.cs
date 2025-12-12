@@ -23,87 +23,112 @@ internal class Program
     {
         try
         {
-            Console.Write("Enter wallpaper search subject: ");
-            var query = Console.ReadLine()?.Trim();
-            
-            if (string.IsNullOrWhiteSpace(query))
-                query = "random";
-
-            var encodedQuery = Uri.EscapeDataString(query);
-
-            Console.Write("Would you like 1920 X 1080 for the reolution? (Y or N):");
+            Console.Write("Would you like 1920 X 1080 for the resolution? (Y or N): ");
             var resolutionInput = Console.ReadLine()?.Trim().ToLower();
-            var searchRes = "1920X1080";
-            if (resolutionInput == "y" || resolutionInput == "yes")
-            {
-                searchRes = "1920x1080";
+            var searchRes = "1920x1080";
 
-            }
-            else
+            if (resolutionInput == "n" || resolutionInput == "no")
             {
                 Console.Write("Enter your desired resolution (e.g., 2560x1440): ");
                 var customRes = Console.ReadLine()?.Trim().ToLower();
                 if (!string.IsNullOrWhiteSpace(customRes))
-                {
                     searchRes = customRes;
-                }
-                else
-                {
-                    searchRes = "1920x1080";
-                }
             }
 
             var encodedRes = Uri.EscapeDataString(searchRes);
 
-            var apiUrl =
-                "https://wallhaven.cc/api/v1/search" +
-                $"?q={encodedQuery}" +
-                "&sorting=random" +
-                "&purity=100" +
-                "&categories=111" +
-                $"&atleast={encodedRes}" +
-                "&ratios=16x9" +
-                "&page=1";
-
             using var http = new HttpClient();
             http.DefaultRequestHeaders.UserAgent.ParseAdd("WallhavenWallpaper/1.0");
 
-            var json = await http.GetStringAsync(apiUrl);
-            using var doc = JsonDocument.Parse(json);
-
-            var data = doc.RootElement.GetProperty("data");
-            if (data.GetArrayLength() == 0)
-                throw new Exception("No wallpapers found for that search.");
-
             var rand = new Random();
-            var chosen = data[rand.Next(data.GetArrayLength())];
-            var imageUrl = chosen.GetProperty("path").GetString();
 
-            if (string.IsNullOrWhiteSpace(imageUrl))
-                throw new Exception("Invalid image URL.");
+            while (true)
+            {
+                Console.Write("Enter wallpaper search subject: ");
+                var query = Console.ReadLine()?.Trim();
+                if (string.IsNullOrWhiteSpace(query))
+                    query = "random";
 
-            var ext = Path.GetExtension(new Uri(imageUrl).AbsolutePath);
-            if (string.IsNullOrWhiteSpace(ext)) ext = ".jpg";
+                var encodedQuery = Uri.EscapeDataString(query);
 
-            var filePath = Path.Combine(
-                Path.GetTempPath(),
-                $"wallhaven_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
+                // 1) First request: get meta so we know last_page
+                var metaUrl =
+                    "https://wallhaven.cc/api/v1/search" +
+                    $"?q={encodedQuery}" +
+                    "&sorting=random" +
+                    "&purity=100" +
+                    "&categories=111" +
+                    $"&atleast={encodedRes}" +
+                    "&ratios=16x9" +
+                    "&page=1";
 
-            var bytes = await http.GetByteArrayAsync(imageUrl);
-            await File.WriteAllBytesAsync(filePath, bytes);
+                var metaJson = await http.GetStringAsync(metaUrl);
+                using var metaDoc = JsonDocument.Parse(metaJson);
 
-            SetWallpaperStyleFill();
+                var meta = metaDoc.RootElement.GetProperty("meta");
+                var lastPage = meta.GetProperty("last_page").GetInt32();
+                if (lastPage < 1) lastPage = 1;
 
-            var success = SystemParametersInfo(
-                SPI_SETDESKWALLPAPER,
-                0,
-                filePath,
-                SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                // Wallhaven caps results pagination; keep it safe (and fast)
+                var pageToUse = rand.Next(1, Math.Min(lastPage, 50) + 1);
 
-            if (!success)
-                throw new Exception("Failed to set wallpaper.");
+                // 2) Second request: actually pull a random page
+                var apiUrl =
+                    "https://wallhaven.cc/api/v1/search" +
+                    $"?q={encodedQuery}" +
+                    "&sorting=random" +
+                    "&purity=100" +
+                    "&categories=111" +
+                    $"&atleast={encodedRes}" +
+                    "&ratios=16x9" +
+                    $"&page={pageToUse}";
 
-            Console.WriteLine("Wallpaper set (Fill).");
+                var json = await http.GetStringAsync(apiUrl);
+                using var doc = JsonDocument.Parse(json);
+
+                var data = doc.RootElement.GetProperty("data");
+                if (data.GetArrayLength() == 0)
+                {
+                    Console.WriteLine("No wallpapers found.");
+                }
+                else
+                {
+                    var chosen = data[rand.Next(data.GetArrayLength())];
+                    var imageUrl = chosen.GetProperty("path").GetString();
+
+                    if (string.IsNullOrWhiteSpace(imageUrl))
+                        throw new Exception("Invalid image URL.");
+
+                    var ext = Path.GetExtension(new Uri(imageUrl).AbsolutePath);
+                    if (string.IsNullOrWhiteSpace(ext)) ext = ".jpg";
+
+                    var filePath = Path.Combine(
+                        Path.GetTempPath(),
+                        $"wallhaven_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
+
+                    var bytes = await http.GetByteArrayAsync(imageUrl);
+                    await File.WriteAllBytesAsync(filePath, bytes);
+
+                    SetWallpaperStyleFill();
+
+                    var success = SystemParametersInfo(
+                        SPI_SETDESKWALLPAPER,
+                        0,
+                        filePath,
+                        SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+
+                    if (!success)
+                        throw new Exception("Failed to set wallpaper.");
+
+                    Console.WriteLine($"Wallpaper set (Fill). Page used: {pageToUse}/{lastPage}");
+                }
+
+                Console.Write("Search again? (Y or N): ");
+                var again = Console.ReadLine()?.Trim().ToLower();
+                if (again != "y" && again != "yes")
+                    break;
+            }
+
             return 0;
         }
         catch (Exception ex)
